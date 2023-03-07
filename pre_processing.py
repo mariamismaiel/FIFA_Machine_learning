@@ -2,13 +2,9 @@ from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import math
 import pandas as pd
-import seaborn as sns
-from sklearn.impute import SimpleImputer
-import matplotlib.pyplot as plt
-
+from sklearn.feature_selection import mutual_info_classif
 
 #----------------------------------------------------------Functions--------------------------------------------------------------
-
 def featureScaling(X,a,b):
     X = np.array(X)
     Normalized_X=np.zeros((X.shape[0],X.shape[1]))
@@ -28,12 +24,11 @@ def date_preprocessing(x):
 #-------------------------------------------------------Pre-Processing-------------------------------------------------------------
 
 
-def preProcessing(X,Y):
+def preProcessing(data,X,Y):
+    
     # Dealing with uncommon/exceptional cells in body type feature
     # Series.value_counts(normalize=False, sort=True, ascending=False, bins=None(optional, works only with numeric data), dropna=True)
-    X.drop(["name", "full_name", "nationality", "birth_date", "club_join_date", "club_team"], axis=1,
-           inplace=True)
-
+    X.drop(["name", "full_name", "nationality", "birth_date", "club_join_date", "club_team"], axis=1, inplace=True)
     lst = []
     count = 0
     for j in X['body_type']:
@@ -52,9 +47,7 @@ def preProcessing(X,Y):
                 lst.append("Normal")
                 count += 1
     X['body_type'] = lst
-
-
-
+    # converts categorical data into indicator variables
     X = pd.get_dummies(X, columns=['body_type','preferred_foot'], drop_first=True)
 
     # converts ordinal categorical data into numeric data
@@ -63,27 +56,29 @@ def preProcessing(X,Y):
     X["work_rate_attacking"] = X["work_rate_attacking"].replace(workrate1)
     workrate2 = {" Low": 1, " Medium": 2, " High": 3}
     X["work_rate_defense"] = X["work_rate_defense"].replace(workrate2)
+
     X.drop(['work_rate'], axis=1, inplace=True)
+
+
+
 
     # preprocess contract_end_year column
     X['contract_end_year'] = X['contract_end_year'].apply(date_preprocessing)
-
 
     # preprocess position power columns (adding the two values)
     position_power = ['LS', 'ST', 'RS', 'LW', 'LF', 'CF', 'RF', 'RW', 'LAM', 'CAM', 'RAM', 'LM', 'LCM', 'CM',
                       'RCM', 'RM', 'LWB', 'LDM', 'CDM', 'RDM', 'RWB', 'LB', 'LCB', 'CB', 'RCB', 'RB']
 
-  
     X[position_power]=X[position_power].apply(lambda x: x.fillna("0+0"))
-    
+
 
     for col in position_power:
         X[col]=X[col].apply(lambda x:x.split('+'))
         X[col]=X[col].apply(lambda x:int(x[0])+int(x[1])) 
-           
+
+   
 
     # updating columns with boolean values (0,1)
-    #to know if the player is in national team or not
     ll = []
     for i in X['national_rating']:
         if math.isnan(i):
@@ -91,24 +86,20 @@ def preProcessing(X,Y):
         else:
             ll.append(1)
     X['national_team'] = ll
-
     X['national_rating'] = X["national_rating"].fillna(0)
 
     cols = ['traits', 'tags']
     ll = []
-    #count number of his values from column
     for i in cols:
         for j in X[i]:
             if j is np.nan:
                 cnt = 0
             else:
-                j=str(j)
+                j = str(j)
                 values = j.split(',')
                 cnt = len(values)
             ll.append(cnt)
         X[i] = ll
-    
-
         ll = []
     # converts ordinal categorical data into numeric data
     attaker = ['LS', 'ST', 'RS', 'LW', 'LF', 'CF', 'RF', 'RW']
@@ -122,7 +113,7 @@ def preProcessing(X,Y):
         lst = i.split(',')
         for j in range(len(lst)):
             if lst[j] in sub:
-                value += 1 #least expensive position
+                value += 1
             elif lst[j] == 'GK':
                 value += 2
             elif lst[j] in defender:
@@ -130,7 +121,7 @@ def preProcessing(X,Y):
             elif lst[j] in midline:
                 value += 4
             elif lst[j] in attaker:
-                value += 5   #most expensive potision
+                value += 5
         values_list.append(value)
     X["positions"] = values_list
 
@@ -158,48 +149,47 @@ def preProcessing(X,Y):
         X[i] = values_list
 
     # dealing with Nulls
-    col_with_nulls = ["wage", "club_rating", "club_jersey_number", "contract_end_year",
+    col_with_nulls = ["wage", "club_rating", "club_jersey_number",  "contract_end_year",
                       "release_clause_euro", "national_jersey_number"]
      # Convert nan/null to 0"""
     for col in col_with_nulls:
-         X[col]=X[col].fillna(X[col].median())  
+         X[col]=X[col].fillna(X[col].median()) 
 
     X["contract_end_year"] = X["contract_end_year"].astype(int)
     # scaling
     X_cols = ["id", "wage", "release_clause_euro"]
     X[X_cols] = featureScaling(X[X_cols], 0, 1)
+
     # Get the correlation between the features
-    X_total = X.iloc[:, :]
-    X_total["value"] = Y
+    X.to_csv("new fifa classification.csv", index=False)
+    X_total = pd.read_csv("new fifa classification.csv")
+
+    X_total["PlayerLevel"] = Y
+    
+    for c in X:
+       if X[c].isnull().all():
+           X.drop([c],axis=1,inplace=True)
+
+    """information_gain=mutual_info_classif(X,Y)
+    importance=pd.Series(information_gain,X.columns[0:len(X_total.columns)])
+    print(X)"""
 
     ########## Feature Selection ###############
-    X.drop(['id', 'height_cm', 'weight_kgs',
+    X.drop(['id', 'height_cm', 'weight_kgs', 
              'club_position', 'club_jersey_number', 'national_team_position',
             'national_team',
             'national_jersey_number', 'tags', 'LAM', 'CAM', 'RAM', 'LM', 'LCM', 'CM',
             'RCM', 'RM', 'LWB', 'LDM', 'CDM', 'RDM', 'RWB',
-            'sliding_tackle', 'GK_diving', 'GK_handling', 'GK_kicking',  # -----------shelt el hagat el corr bta3ha 0.0
+            'sliding_tackle', 'GK_diving', 'GK_handling', 'GK_kicking',
             'GK_positioning', 'GK_reflexes', 
-            'work_rate_defense',  # -----------shelt el hagat el corr bta3ha 0.1
+            'work_rate_defense',
             'positions', 'weak_foot(1-5)', 'heading_accuracy', 'acceleration', 'sprint_speed', 'agility', 'balance',
             'jumping', 'strength', 'aggression',
             'interceptions', 'marking', 'standing_tackle', 'work_rate_attacking', 'LB', 'LCB', 'CB', 'RCB', 'RB', 'LS',
             'ST', 'RS', 'LW', 'LF', 'CF', 'RF', 'RW'], axis=1,
-           inplace=True)  # -----------shelt el hagat el corr bta3ha 0.2
-
-    corr = X.corr()
-    top_feature = X.iloc[:, :]
-    plt.subplots(figsize=(12, 8))
-    top_corr = top_feature.corr()
-    sns.heatmap(top_corr, annot=True)
-    #plt.show()
-
-    X_total['value'] = Y
-    # dealing with Nulls in value column
+           inplace=True)
     X_total.dropna(how='any', inplace=True)
-    Y = X_total["value"]
-    X.drop(['value'], axis=1, inplace=True)
-    X_total.to_csv("new fifa.csv", index=False)
+    X.to_csv("new fifa classification.csv", index=False)
     return X,Y
 
 
